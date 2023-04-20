@@ -19,14 +19,14 @@ struct
       let show = show
     end)
 
-  (* TODO: An attempt to abstract integers, but it's just a little wrong... *)
+  (* TODO: An attempt to abstract integers, but it's just a little wrong... -- DONE *)
   let of_int i =
-    if Z.compare i Z.zero < 0 then Zero
-    else if Z.compare i Z.zero > 0 then Zero
+    if Z.compare i Z.zero < 0 then Neg
+    else if Z.compare i Z.zero > 0 then Pos
     else Zero
 
   let lt x y = match x, y with
-    | Neg, Pos | Neg, Zero -> true (* TODO: Maybe something missing? *)
+    | Neg, Pos | Neg, Zero | Zero, Pos -> true (* TODO: Maybe something missing? -- DONE *)
     | _ -> false
 end
 
@@ -34,12 +34,29 @@ end
  * We then lift the above operations to the lattice. *)
 module SL =
 struct
-  include Lattice.Flat (Signs) (Printable.DefaultNames)
-  let of_int i = `Lifted (Signs.of_int i)
+  (* include Lattice.Flat (Signs) (Printable.DefaultNames) *)
+  include SetDomain.FiniteSet (Signs) (
+    struct
+      type t = Signs.t
+      let elems = [Signs.Neg; Signs.Zero; Signs.Pos]
+    end
+    )
+    
+  (* let of_int i = `Lifted (Signs.of_int i) *)
+  let of_int i = singleton (Signs.of_int i)
 
-  let lt x y = match x, y with
+  (* let lt x y = match x, y with
     | `Lifted x, `Lifted y -> Signs.lt x y
-    | _ -> false
+     | _ -> false *)
+  let lt x y = 
+    let list = elements x in
+    let rec lt' x y = match x, y with
+      | x::xs, y -> (if for_all (Signs.lt x) y = true
+          then lt' xs y
+        else
+          false)
+      | [], y -> true in
+    lt' list y
 end
 
 module Spec : Analyses.MCPSpec =
@@ -57,7 +74,7 @@ struct
 
   (* This should now evaluate expressions. *)
   let eval (d: D.t) (exp: exp): SL.t = match exp with
-    | Const (CInt (i, _, _)) -> SL.top () (* TODO: Fix me! *)
+    | Const (CInt (i, _, _)) -> SL.of_int i (* TODO: Fix me! -- DONE *)
     | Lval (Var x, NoOffset) -> D.find x d
     | _ -> SL.top ()
 
