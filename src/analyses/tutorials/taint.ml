@@ -22,7 +22,7 @@ struct
   include Analyses.DefaultSpec
 
   let name () = "taint"
-  module D = Lattice.Unit (* TODO: Change such that you have a fitting local domain *)
+  module D = MapDomain.MapBot (Basetype.Variables) (BoolDomain.MustBool) (* TODO: Change such that you have a fitting local domain -- DONE *)
   module C = Lattice.Unit
 
   (* We are context insensitive in this analysis *)
@@ -44,9 +44,11 @@ struct
     | SizeOf _ | SizeOfStr _ | Const _  | AlignOf _ | AddrOfLabel _ -> false
     | Question (b, t, f, _) -> is_exp_tainted state b || is_exp_tainted state t || is_exp_tainted state f
   and is_lval_tainted state = function
-    | (Var v, _) ->
-      (* TODO: Check whether variable v is tainted *)
-      false
+    | (Var v, _) -> 
+      (* TODO: Check whether variable v is tainted -- DONE *)
+      (match D.find_opt v state
+        with Some(x) -> x
+        | None -> is_source v)
     | _ ->
       (* We assume using a tainted offset does not taint the expression, and that our language has no pointers *)
       false
@@ -58,8 +60,11 @@ struct
     let state = ctx.local in
     match lval with
     | Var v,_ ->
-      (* TODO: Check whether rval is tainted, handle assignment to v accordingly *)
-      state
+      (* TODO: Check whether rval is tainted, handle assignment to v accordingly -- DONE *)
+      if is_exp_tainted state rval = true
+        then D.add v true state
+      else
+        state
     | _ -> state
 
   (** Handles conditional branching yielding truth value [tv]. *)
@@ -78,9 +83,12 @@ struct
     let state = ctx.local in
     match exp with
     | Some e ->
-      (* TODO: Record whether a tainted value was returned. *)
+      (* TODO: Record whether a tainted value was returned. -- DONE *)
       (* Hint: You may use return_varinfo in place of a variable. *)
-      state
+      if is_exp_tainted state e = true
+        then D.add return_varinfo true state
+      else
+        state
     | None -> state
 
   (** For a function call "lval = f(args)" or "f(args)",
@@ -91,10 +99,10 @@ struct
     let caller_state = ctx.local in
     (* Create list of (formal, actual_exp)*)
     let zipped = List.combine f.sformals args in
-    (* TODO: For the initial callee_state, collect formal parameters where the actual is tainted. *)
+    (* TODO: For the initial callee_state, collect formal parameters where the actual is tainted. -- DONE *)
     let callee_state = List.fold_left (fun ts (f,a) ->
         if is_exp_tainted caller_state a
-        then ts (* TODO: Change accumulator ts here? *)
+        then D.add f true ts (* TODO: Change accumulator ts here? -- DONE *)
         else ts)
         (D.bot ())
         zipped in
