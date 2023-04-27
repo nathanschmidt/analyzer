@@ -47,8 +47,8 @@ struct
     | (Var v, _) -> 
       (* TODO: Check whether variable v is tainted -- DONE *)
       (match D.find_opt v state
-        with Some(x) -> x
-        | None -> is_source v)
+       with Some x -> x
+          | None -> false)
     | _ ->
       (* We assume using a tainted offset does not taint the expression, and that our language has no pointers *)
       false
@@ -61,10 +61,10 @@ struct
     match lval with
     | Var v,_ ->
       (* TODO: Check whether rval is tainted, handle assignment to v accordingly -- DONE *)
-      if is_exp_tainted state rval = true
+      if is_exp_tainted state rval
         then D.add v true state
       else
-        state
+        D.add v false state
     | _ -> state
 
   (** Handles conditional branching yielding truth value [tv]. *)
@@ -85,10 +85,10 @@ struct
     | Some e ->
       (* TODO: Record whether a tainted value was returned. -- DONE *)
       (* Hint: You may use return_varinfo in place of a variable. *)
-      if is_exp_tainted state e = true
+      if is_exp_tainted state e
         then D.add return_varinfo true state
       else
-        state
+        D.add return_varinfo false state
     | None -> state
 
   (** For a function call "lval = f(args)" or "f(args)",
@@ -121,17 +121,33 @@ struct
       Argument [callee_local] is the state of [f] at its return node. *)
   let combine_assign ctx (lval:lval option) fexp (f:fundec) (args:exp list) fc (callee_local:D.t) (f_ask: Queries.ask): D.t =
     let caller_state = ctx.local in
-    (* TODO: Record whether lval was tainted. *)
-    caller_state
+    (* TODO: Record whether lval was tainted. -- DONE *)
+    match lval
+    with Some (Var v, _) -> (match D.find_opt return_varinfo callee_local
+                             with Some r -> D.add v r caller_state
+                                | _ -> caller_state)
+       | _ -> caller_state
 
   (** For a call to a _special_ function f "lval = f(args)" or "f(args)",
       computes the caller state after the function call.
       For this analysis, source and sink functions will be considered _special_ and have to be treated here. *)
   let special ctx (lval: lval option) (f:varinfo) (arglist:exp list) : D.t =
     let caller_state = ctx.local in
-    (* TODO: Check if f is a sink / source and handle it appropriately *)
-    (* To warn about a potential issue in the code, use M.warn. *)
-    caller_state
+    (* TODO: Check if f is a sink / source and handle it appropriately -- DONE *)
+    if is_sink f
+    then (List.iter (fun a -> if is_exp_tainted caller_state a then M.warn "Tainted variable reaching sink") arglist;
+          caller_state)
+    else if is_source f
+    then match lval
+      with Some (Var v, _) -> D.add v true caller_state
+         | _ -> caller_state
+    else
+      match lval
+      with Some (Var v, _) -> if List.exists (is_exp_tainted caller_state) arglist
+        then D.add v true caller_state
+        else
+          D.add v false caller_state
+         | _ -> caller_state
 
   (* You may leave these alone *)
   let startstate v = D.bot ()
